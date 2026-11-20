@@ -1,0 +1,52 @@
+# =========================================================
+# Promemoria automatico per Supabase
+# Legge una riga dalla tabella "segnalazioni" due volte al giorno,
+# così il progetto gratuito non viene considerato inattivo.
+#
+# DOVE VA MESSO
+#   Nel tuo repository GitHub, in un file chiamato esattamente:
+#   .github/workflows/keep-alive.yml
+#
+# COSA SERVE PRIMA
+#   Nel repository, in Settings > Secrets and variables > Actions,
+#   crea due "New repository secret":
+#     SUPABASE_URL       = https://swqwgsnzpuddsfvqbckx.supabase.co
+#     SUPABASE_ANON_KEY  = la tua chiave publishable (sb_publishable_...)
+# =========================================================
+
+name: Supabase keep-alive
+
+on:
+  schedule:
+    # Ogni giorno alle 07:17 e alle 19:17 UTC (8:17 e 20:17 in Italia)
+    - cron: '17 7,19 * * *'
+  # permette di lanciarlo a mano dal pulsante "Run workflow"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Legge una riga dal database
+        run: |
+          set -e
+          echo "Progetto: ${{ secrets.SUPABASE_URL }}"
+          echo "Ora UTC: $(date -u '+%Y-%m-%d %H:%M')"
+          codice=$(curl -sS -o /tmp/risposta.txt -w '%{http_code}' --retry 3 --retry-delay 5 \
+            "${{ secrets.SUPABASE_URL }}/rest/v1/segnalazioni?select=id&limit=1" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}")
+          echo "Risposta HTTP: $codice"
+          echo "Contenuto: $(cat /tmp/risposta.txt)"
+          if [ "$codice" = "200" ]; then
+            echo "OK: il progetto ha risposto, la lettura è andata a buon fine."
+          elif [ "$codice" = "540" ]; then
+            echo "ATTENZIONE: il progetto sembra in pausa. Vai su supabase.com/dashboard e premi Resume project."
+            exit 1
+          else
+            echo "Problema: risposta inattesa dal database."
+            exit 1
+          fi
